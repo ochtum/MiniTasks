@@ -12,8 +12,11 @@ MiniTasksは、Blazor Web App（Interactive Server）をLinux App Serviceの.NET
 | App Serviceの設定名 | 値 |
 | --- | --- |
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true`（Linux App Serviceで必須） |
 | `Supabase__Url` | 公開用Supabase ProjectのHTTPS URL |
 | `Supabase__ApiKey` | 同じProjectのpublishableキー |
+
+Linux App Serviceはフロント側のプロキシでTLSを終端します。`ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`で元のHTTPSスキームをアプリへ伝え、`UseHttpsRedirection`によるリダイレクトのループを防ぎます。このフラグは転送元IPを制限しないため、信頼するApp Serviceのプロキシを経由してアプリへ接続する構成を前提とします。[ASP.NET Coreの公式設定手順](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/proxy-load-balancer?view=aspnetcore-10.0#forward-the-scheme-for-linux-and-non-iis-reverse-proxies)
 
 利用者のアクセストークンやRefresh Tokenを共通設定へ登録しません。アプリは利用者のトークンでData APIを呼び、RLSで所有者の行だけを扱います。`service_role`キーやsecretキーはアプリ設定に不要です。
 
