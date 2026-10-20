@@ -15,7 +15,7 @@
 
 ## 最初に動かす
 
-前提は.NET 10 SDK、PowerShell 7、DockerのLinuxエンジン、Supabase CLI **2.114.0**です。SDKの選択は`global.json`に従います。
+前提は.NET SDK **10.0.401**、PowerShell 7、DockerのLinuxエンジン、Supabase CLI **2.114.0**です。SDKは`global.json`で完全一致に固定しています。SDKを更新する際は、SDKが追加する依存も含めてLockファイルを更新し、CIで確認します。
 
 ```powershell
 cd D:\source\MiniTasks

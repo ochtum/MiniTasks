@@ -56,7 +56,7 @@ GitHubのSettings → Environmentsから`staging`を作ります。Deployment br
 
 SupabaseのTokenには、`supabase link`で必要となるProject Settings、API Keys、API Key SecretsのReadを付与します。DB変更には別途DBパスワードを使います。AzureのOIDC認証は、Supabase認証の代わりにはなりません。
 
-Supabase CLIはWorkflowとローカルの両方で`2.114.0`を使用します。.NET SDKはRepositoryの`global.json`から選びます。SDKやCLIを更新する場合は、ローカル・CI・この手順の対応を合わせて確認してください。
+Supabase CLIはWorkflowとローカルの両方で`2.114.0`を使用します。.NET SDKはRepositoryの`global.json`で`10.0.401`へ完全一致に固定しています。SDKの更新では、暗黙に追加されるASP.NET Coreの依存も変わる場合があるため、Lockファイルも更新してCIで確認します。CLIを更新する場合も、ローカル・CI・この手順の対応を合わせて確認してください。
 
 参考: [Supabaseの環境管理](https://supabase.com/docs/guides/deployment/managing-environments)、[Supabase setup-cli](https://github.com/supabase/setup-cli)、[setup-dotnet](https://github.com/actions/setup-dotnet)。
 
