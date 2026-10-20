@@ -90,10 +90,13 @@ pwsh ./scripts/test-health.ps1 -BaseUrl http://localhost:5050
 
 初回にLinux App Service、Hosted Supabase、GitHubのOIDC連携と`staging` Environmentを用意します。[Azureへのデプロイ手順](docs/azure-deployment.md)に、必要な権限・Variables・Secretsをまとめています。
 
-App Serviceが読む設定は次の3つです。
+HostedのMigrationには、GitHub Environmentの`SUPABASE_PROJECT_REF`、`SUPABASE_DB_POOLER_HOST`と、Secretの`SUPABASE_DB_PASSWORD`を使います。CLIはIPv4対応のSession poolerへ接続し、パスワードはURLに含めず`PGPASSWORD`で渡します。管理PATや`supabase link`は不要です。アプリ実行時のデータ通信は、利用者JWTを使うHTTPSのData APIです。
+
+App Serviceが読む設定は次の4つです。
 
 ```text
 ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 Supabase__Url=https://<project-ref>.supabase.co
 Supabase__ApiKey=<同じProjectのpublishableキー>
 ```

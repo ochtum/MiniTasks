@@ -6,7 +6,7 @@ MiniTasksは、Blazor Web App（Interactive Server）をLinux App Serviceの.NET
 
 1. Azureの有効なSubscription、Resource Group、Linux App Service PlanとWeb Appを作成します。Runtimeは`.NET 10 (LTS)`を選びます。実行時の対応状況は`az webapp list-runtimes --os linux`でも確認できます。
 2. Web Appは**1インスタンス**に固定します。HTTPS Onlyを有効にし、Session affinity（ARR affinity）を有効のままにします。LinuxのWebSocketsは有効済みで、`webSocketsEnabled`の設定は適用されません。公開後に実際の対話操作と接続を確認します。プランが対応していればAlways Onを有効にすると、無通信時のアプリ停止を減らせます。
-3. 公開用のSupabase Projectを作成し、Project URL、publishableキー、Project ref、DBパスワードを確認します。ローカルのProjectや認証キーと混同しないでください。
+3. 公開用のSupabase Projectを作成し、Project URL、publishableキー、Project ref、DBパスワード、Session poolerのHostを確認します。HostはSupabase DashboardのConnect → Session poolerからコピーします。ローカルのProjectや認証キーと混同しないでください。
 4. App Serviceの環境変数を次の表のとおり設定します。反映するとアプリが再起動します。
 
 | App Serviceの設定名 | 値 |
@@ -26,13 +26,26 @@ Hostedの認証利用者はSupabase Dashboard等で作成します。ローカ�
 
 ## AzureとGitHubのOIDCを設定する
 
-AzureのMicrosoft EntraアプリとService Principal、または対応するUser-assigned Managed Identityを作成します。GitHub用のFederated Credentialを設定します。
+AzureのMicrosoft EntraアプリとService Principal、または対応するUser-assigned Managed Identityを作成します。GitHubのRepositoryまたはOrganizationのOIDC設定とclaim previewを確認し、実際に発行される`sub`と一致するGitHub用Federated Credentialを設定します。
+
+GitHub.comでは、2026年7月15日以降に作成・改名・移管したRepositoryは、Owner IDとRepository IDを含むimmutable形式が既定です。それ以前のRepositoryには従来形式が残る場合があります。Repository名からSubjectを推測せず、現在の設定を確認してください。
+
+このRepositoryの設定を読み取る例です。別のRepositoryへ配置する場合は`ochtum/MiniTasks`を置き換えます。OIDCトークンそのものを表示する必要はありません。
+
+```powershell
+gh api repos/ochtum/MiniTasks/actions/oidc/customization/sub
+```
+
+`use_default`、`use_immutable_subject`、`sub_claim_prefix`を確認します。既定の形式を使うこのWorkflowでは、prefixに`:environment:staging`を続けたSubjectを設定します。claimをカスタマイズしている場合は、preview等で確認した実際のSubjectを採用します。
 
 | 項目 | 値 |
 | --- | --- |
 | Issuer | `https://token.actions.githubusercontent.com` |
 | Audience | `api://AzureADTokenExchange` |
-| Subject | `repo:<OWNER>/<REPOSITORY>:environment:staging` |
+| Subject（immutable形式） | `repo:<OWNER>@<OWNER_ID>/<REPOSITORY>@<REPOSITORY_ID>:environment:staging` |
+| Subject（従来形式を使うRepositoryのみ） | `repo:<OWNER>/<REPOSITORY>:environment:staging` |
+
+`OWNER_ID`と`REPOSITORY_ID`はGitHubの数値IDです。Federated CredentialのSubjectは、IDとEnvironment名を含め、発行される`sub`と完全一致させます。[GitHubのOIDC仕様](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims)、[Microsoft Entraのimmutable Subject手順](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects)、[既定形式の変更告知](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-GitHub-actions-oidc-tokens/)
 
 Identityには、**配置先Web Appの範囲**で`Website Contributor`を付与します。Subscription全体へのContributorは、このWorkflowのためには不要です。Identity作成・Federated Credential設定・Role割当は、これらの権限を持つAzure管理者が初回に行います。
 
@@ -54,14 +67,24 @@ GitHubのSettings → Environmentsから`staging`を作ります。Deployment br
 | Variables | `AZURE_WEBAPP_NAME` | Staging用途のWeb App名 |
 | Variables | `APP_BASE_URL` | 同じWeb AppのHTTPS URL。クエリ・Fragment・認証情報は含めない |
 | Variables | `SUPABASE_PROJECT_REF` | App Serviceの`Supabase__Url`と同じHosted Projectのref |
-| Secrets | `SUPABASE_ACCESS_TOKEN` | 対象Projectに限定したSupabaseのScoped Personal Access Token |
+| Variables | `SUPABASE_DB_POOLER_HOST` | 同じProjectのConnect → Session poolerで表示されるHost。Host名だけを登録 |
 | Secrets | `SUPABASE_DB_PASSWORD` | 同じProjectのDBパスワード |
 
-SupabaseのTokenには、`supabase link`で必要となるProject Settings、API Keys、API Key SecretsのReadを付与します。DB変更には別途DBパスワードを使います。AzureのOIDC認証は、Supabase認証の代わりにはなりません。
+MigrationはIPv4対応の共有Session pooler（port `5432`）へ接続します。Free Projectの直接接続はIPv6のため、GitHub runnerから到達できるSession poolerを明示します。Hostにはクラスタを識別する番号も含まれるため、リージョン名から推測せずDashboardの値を使います。
+
+Workflowは次の形式で、パスワードを含まない接続URIを組み立てます。
+
+```text
+postgresql://postgres.<project-ref>@<session-pooler-host>:5432/postgres?sslmode=require
+```
+
+DBパスワードはSecretから環境変数`PGPASSWORD`へ渡し、URIやログには含めません。このWorkflowは管理PATと`supabase link`を使わず、既存の`SUPABASE_ACCESS_TOKEN` Secretも参照しません。Azureの配置認証には引き続きOIDCを使います。
+
+Session poolerの接続はMigration専用です。アプリは`Supabase__Url`のHTTPS Data APIへ利用者JWTを付けてアクセスします。App ServiceにDBパスワードやpooler接続URIを登録する必要はありません。
 
 Supabase CLIはWorkflowとローカルの両方で`2.114.0`を使用します。.NET SDKはRepositoryの`global.json`で`10.0.401`へ完全一致に固定しています。SDKの更新では、暗黙に追加されるASP.NET Coreの依存も変わる場合があるため、Lockファイルも更新してCIで確認します。CLIを更新する場合も、ローカル・CI・この手順の対応を合わせて確認してください。
 
-参考: [Supabaseの環境管理](https://supabase.com/docs/guides/deployment/managing-environments)、[Supabase setup-cli](https://github.com/supabase/setup-cli)、[setup-dotnet](https://github.com/actions/setup-dotnet)。
+参考: [Supabaseの接続方式とSession pooler](https://supabase.com/docs/guides/database/connecting-to-postgres#shared-pooler-session-mode)、[Supabaseの環境管理](https://supabase.com/docs/guides/deployment/managing-environments)、[Supabase setup-cli](https://github.com/supabase/setup-cli)、[setup-dotnet](https://github.com/actions/setup-dotnet)。
 
 ## 検査と公開の流れ
 
@@ -72,8 +95,8 @@ Supabase CLIはWorkflowとローカルの両方で`2.114.0`を使用します。
 3. `scripts/test-supabase.ps1`でpgTAPと、実際の利用者JWTを使うREST APIの隔離テストを実行します。Hosted Projectや公開用Secretsは使いません。
 4. 同じCommitのアプリを`dotnet publish`し、Commit SHA付きのArtifact名で保存します。Local設定や認証情報はArtifactへ含めません。
 5. 検査成功後、`staging` Environmentを使用するdeploy jobで必要設定を確認し、今回のArtifactを取得します。
-6. AzureへOIDC認証し、Supabase Hostedの対象ProjectへLinkします。
-7. `supabase db push --dry-run --skip-vault --yes`で反映予定を表示し、`supabase db push --skip-vault --yes`で未適用Migrationを反映します。Seed投入やLocalのVault設定反映は行いません。
+6. AzureへOIDC認証し、Project refとHostから対象ProjectのSession pooler接続URIを組み立てます。DBパスワードは`PGPASSWORD`で渡します。
+7. `supabase db push --db-url "$databaseUrl" --dry-run --skip-vault --yes`で反映予定を表示し、`supabase db push --db-url "$databaseUrl" --skip-vault --yes`で未適用Migrationを反映します。`$databaseUrl`は上記のパスワードを含まないURIです。Seed投入やLocalのVault設定反映は行いません。
 8. 検査済みのpublish出力をApp Serviceへ配置します。
 9. `scripts/test-health.ps1`で`/healthz`がHTTP 200、JSONの`status`が`ok`、`app`が`MiniTasks`であることを確認します。Redirect先のログイン画面を成功扱いにしません。
 
@@ -98,8 +121,8 @@ ASP.NET Coreの認証CookieやAntiforgeryはData Protectionを使います。ア
 | 失敗した工程 | 確認すること |
 | --- | --- |
 | verify | SDK・Lockファイル、Docker、Local用ポート54421系、Migration、pgTAP、利用者JWTでの隔離結果 |
-| OIDC | Environment名とSubjectの一致、IdentityのClient ID、TenantとSubscription、Web AppへのRole |
-| Supabase Link・Migration | 対象ref、Scoped Tokenの権限、DBパスワード、適用履歴とSQL |
+| OIDC | OIDC設定・claim previewとSubjectの完全一致（immutable形式の数値IDを含む）、Environment名、IdentityのClient ID、TenantとSubscription、Web AppへのRole |
+| Supabase Migration | 対象ref、Session poolerのHostとport 5432、IPv4接続、DBパスワード、適用履歴とSQL |
 | App Service配置・起動 | Web App名、.NET 10 Runtime、アプリ設定、App Serviceのログ |
 | health | HTTPS URL、`/healthz`が認証不要で200のJSONを返すか、起動待ちか |
 | ログイン・操作 | 公開用Auth利用者、接続先Project、RLSとGRANT、セッションの期限・アプリ再起動、WebSocket接続 |
