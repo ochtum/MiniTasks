@@ -33,6 +33,25 @@
 
 初回のCIはSDKのroll-forwardに起因する問題で失敗しました。`global.json`を修正し、SDK 10.0.401を厳密に選択する設定にした後、上記のCIが成功しました。
 
+## 初回のAzure公開
+
+2026年10月20日、[Deploy staging Run 39437313240](https://github.com/ochtum/MiniTasks/actions/runs/39437313240)で、検査からHosted SupabaseのMigration、Azureへの配置、ヘルス確認まで成功しました。
+
+| 対象 | 結果 |
+| --- | --- |
+| 対象Commit | `6009f432e9dfd3bb9056869ad98bea6eab92f915` |
+| 公開URL | [MiniTasks](https://minitasks-ochtum-demo.azurewebsites.net) |
+| 共通のverify | 成功 |
+| AzureのOIDC認証 | 成功 |
+| Hosted Migration | Session pooler経由のdry-runと未適用Migrationの反映に成功 |
+| App Serviceへの配置 | 成功。LinuxのFreeプラン（F1相当）、Japan West、.NET 10 |
+| Workflowのヘルス確認 | HTTP 200、`status=ok`、`app=MiniTasks` |
+| 外部PCからのヘルス確認 | `test-health.ps1`でHTTP 200と同じJSONを確認 |
+| 公開画面のブラウザー確認 | ログイン画面を表示 |
+| HostedのDB設定 | Dashboardで`tasks`のRLS有効と、`authenticated`向けCRUDの4ポリシーを確認 |
+
+公開用のAuth利用者も作成しました。ローカルのデモ利用者・パスワードは公開先へコピーしていません。
+
 ## 公開環境での未確認事項
 
-Hosted SupabaseへのMigration、Azureへの実配置、公開URLでのヘルス確認と利用者のログイン・タスク操作は確認待ちです。CI成功はAzureでの稼働確認を含みません。これらは[デプロイ手順](azure-deployment.md)に従い、対象環境を設定して確認します。開発・公開時間の比較値も計測していません。
+Hostedでの利用者のログイン、タスクの追加・一覧・完了切り替え・削除、2利用者の分離、再読込、ログアウト、Blazorの再接続は確認待ちです。ヘルス応答とRLS設定の確認だけで、これらの操作を検証済みとは扱いません。操作は[デプロイ手順](azure-deployment.md)に従って確認します。開発・公開時間の比較値も計測していません。

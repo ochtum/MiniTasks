@@ -88,6 +88,8 @@ pwsh ./scripts/test-health.ps1 -BaseUrl http://localhost:5050
 
 ## Azureへ公開する
 
+2026年10月20日、[公開サンプル](https://minitasks-ochtum-demo.azurewebsites.net)への初回配置、Hosted SupabaseのMigration、ヘルス確認が[Deploy stagingの実行](https://github.com/ochtum/MiniTasks/actions/runs/39437313240)で成功しました。ブラウザーで公開ログイン画面の表示も確認しています。Hostedのログイン・タスク操作は確認待ちです。実施済みと未確認の範囲は[検証結果](docs/verification.md)に記載しています。
+
 初回にLinux App Service、Hosted Supabase、GitHubのOIDC連携と`staging` Environmentを用意します。[Azureへのデプロイ手順](docs/azure-deployment.md)に、必要な権限・Variables・Secretsをまとめています。
 
 HostedのMigrationには、GitHub Environmentの`SUPABASE_PROJECT_REF`、`SUPABASE_DB_POOLER_HOST`と、Secretの`SUPABASE_DB_PASSWORD`を使います。CLIはIPv4対応のSession poolerへ接続し、パスワードはURLに含めず`PGPASSWORD`で渡します。管理PATや`supabase link`は不要です。アプリ実行時のデータ通信は、利用者JWTを使うHTTPSのData APIです。
@@ -110,6 +112,17 @@ GitHubへソースを配置し、`main`を既定Branchとして、Actionsの`Dep
 | `deploy-staging.yml` | 同じ実行内の検査に成功した成果物で、HostedのMigration、App Service配置、ヘルス確認 |
 
 公開先でのDB変更は旧アプリと互換性のある追加変更を前提とします。DBとアプリを一括で自動Rollbackする仕組みは含みません。公開後は、ヘルス応答に加え、ログイン・タスク操作・利用者分離も確認してください。
+
+### Hostedのログイン利用者を作る
+
+このサンプルには新規登録画面がありません。自分の学習用Hosted Supabase Projectで、公開アプリにログインする利用者を作成します。
+
+1. DashboardのAuthentication → Users → Add user → Create new userを開きます。
+2. Email addressとUser Passwordに、自分が使うメールアドレスとパスワードを入力します。
+3. 学習用Projectでは`Auto confirm user?`をチェックしたまま作成します。このフォームから確認メールは送信されません。
+4. 作成した利用者のメールアドレスとパスワードで、公開アプリへログインします。
+
+ローカルのデモ利用者・パスワードは転用しません。利用者のメールアドレスやパスワードをREADME、Workflow、チャットへ記載する必要もありません。
 
 ## ソースの読み方
 
@@ -142,4 +155,4 @@ docs/                    ローカルとAzureの詳しい手順
 - [SupabaseのRLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [App ServiceとGitHub Actions](https://learn.microsoft.com/en-us/azure/app-service/deploy-github-actions)
 
-クラウドでのWorkflow実行とAzureへの配置は、公開先の設定を行ってから確認します。
+初回のクラウド実行結果と、公開環境で残る操作検証の範囲は[検証結果](docs/verification.md)を参照してください。

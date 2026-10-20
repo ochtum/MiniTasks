@@ -127,4 +127,4 @@ ASP.NET Coreの認証CookieやAntiforgeryはData Protectionを使います。ア
 | health | HTTPS URL、`/healthz`が認証不要で200のJSONを返すか、起動待ちか |
 | ログイン・操作 | 公開用Auth利用者、接続先Project、RLSとGRANT、セッションの期限・アプリ再起動、WebSocket接続 |
 
-この手順とWorkflowは、設定済みの外部環境へ公開するための実装です。実際のAzure・GitHub Environment・Supabase設定と、初回のクラウド実行結果は別途確認してください。
+この手順とWorkflowは、設定済みの外部環境へ公開するための実装です。初回のクラウド実行結果と公開環境での確認範囲は[検証結果](verification.md)を参照してください。
