@@ -88,7 +88,9 @@ pwsh ./scripts/test-health.ps1 -BaseUrl http://localhost:5050
 
 ## Azureへ公開する
 
-2026年10月20日、[公開サンプル](https://minitasks-ochtum-demo.azurewebsites.net)への初回配置、Hosted SupabaseのMigration、ヘルス確認が[Deploy stagingの実行](https://github.com/ochtum/MiniTasks/actions/runs/39437313240)で成功しました。ブラウザーで公開ログイン画面の表示も確認しています。Hostedのログイン・タスク操作は確認待ちです。実施済みと未確認の範囲は[検証結果](docs/verification.md)に記載しています。
+2026年10月20日、[公開サンプル](https://minitasks-ochtum-demo.azurewebsites.net)への初回配置、Hosted SupabaseのMigration、ヘルス確認が[Deploy stagingの実行](https://github.com/ochtum/MiniTasks/actions/runs/39437313240)で成功しました。
+
+公開環境の実ブラウザーで、利用者のログイン、タスク追加、完了切り替え、再読込後のログイン状態と同じ完了タスクの保持を確認しました。削除・絞り込み・利用者分離・ログアウト・通信切断後の再接続は未確認です。詳しい確認範囲は[検証結果](docs/verification.md)に記載しています。
 
 初回にLinux App Service、Hosted Supabase、GitHubのOIDC連携と`staging` Environmentを用意します。[Azureへのデプロイ手順](docs/azure-deployment.md)に、必要な権限・Variables・Secretsをまとめています。
 
