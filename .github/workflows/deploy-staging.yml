@@ -1,0 +1,108 @@
+name: Deploy staging
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minitasks-staging
+  cancel-in-progress: false
+
+jobs:
+  check-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo 'Staging deployment must be started from main.' >&2
+            exit 1
+          fi
+
+  verify:
+    needs: check-ref
+    uses: ./.github/workflows/verify.yml
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.APP_BASE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check deployment configuration
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          $required = @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_WEBAPP_NAME', 'APP_BASE_URL', 'SUPABASE_PROJECT_REF', 'SUPABASE_ACCESS_TOKEN', 'SUPABASE_DB_PASSWORD')
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing staging setting: $name"
+            }
+          }
+          $baseUri = [uri]$env:APP_BASE_URL
+          if (-not $baseUri.IsAbsoluteUri -or $baseUri.Scheme -ne 'https' -or $baseUri.UserInfo -or $baseUri.Query -or $baseUri.Fragment) {
+            throw 'APP_BASE_URL must be an absolute HTTPS URL without credentials, a query or a fragment.'
+          }
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: minitasks-publish-${{ github.sha }}
+          path: ${{ runner.temp }}/minitasks-publish
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.114.0
+
+      - name: Login to Azure using OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply pending migrations to the staging project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          supabase link --project-ref "$env:SUPABASE_PROJECT_REF" --yes
+          if ($LASTEXITCODE -ne 0) { throw 'Supabase project link failed.' }
+          supabase db push --dry-run --skip-vault --yes
+          if ($LASTEXITCODE -ne 0) { throw 'Migration preview failed.' }
+          supabase db push --skip-vault --yes
+          if ($LASTEXITCODE -ne 0) { throw 'Migration application failed.' }
+
+      - name: Deploy the verified publish output
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ${{ runner.temp }}/minitasks-publish
+
+      - name: Require HTTP 200 and MiniTasks health JSON
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+        run: ./scripts/test-health.ps1 -BaseUrl "$env:APP_BASE_URL" -Attempts 12 -DelaySeconds 10

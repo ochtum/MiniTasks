@@ -1,0 +1,15 @@
+﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <section class="welcome card">
+                    <p class="eyebrow">YOUR SMALL NEXT STEP</p>
+                    <h1>今日のタスクを、ひとつずつ。</h1>
+                    <p>自分のタスクを追加して、終わったらチェック。ログインして始めましょう。</p>
+                    <a class="button primary" href="/account/login" data-enhance-nav="false">ログインする →</a>
+                </section>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

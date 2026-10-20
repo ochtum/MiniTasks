@@ -1,0 +1,77 @@
+name: Verify MiniTasks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore locked dependencies and build
+        run: |
+          dotnet restore MiniTasks.sln --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Restore failed.' }
+          dotnet build MiniTasks.sln --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+
+      - name: Run unit tests
+        run: |
+          dotnet test tests/MiniTasks.Tests/MiniTasks.Tests.csproj --configuration Release --no-build --no-restore --logger 'trx;LogFileName=unit-tests.trx' --results-directory artifacts/test-results
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed.' }
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.114.0
+
+      - name: Prepare disposable Supabase Local and test users
+        run: ./scripts/setup-local.ps1 -SkipUserSecrets
+
+      - name: Run pgTAP and authenticated REST isolation tests
+        run: ./scripts/test-supabase.ps1
+
+      - name: Publish verified application
+        run: |
+          dotnet publish src/MiniTasks.Web/MiniTasks.Web.csproj --configuration Release --no-build --no-restore --output "$env:RUNNER_TEMP/minitasks-publish"
+          if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+
+      - name: Upload application from this commit
+        uses: actions/upload-artifact@v7
+        with:
+          name: minitasks-publish-${{ github.sha }}
+          path: ${{ runner.temp }}/minitasks-publish
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: minitasks-test-results-${{ github.sha }}
+          path: artifacts/test-results/*.trx
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop disposable Supabase Local
+        if: always()
+        run: |
+          if (Get-Command supabase -ErrorAction SilentlyContinue) {
+            ./scripts/stop-local.ps1
+          }

@@ -1,0 +1,30 @@
+@page "/account/login"
+@model MiniTasks.Web.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "ログイン";
+}
+<section class="card login-card">
+    <p class="eyebrow">YOUR DAILY FOCUS</p>
+    <h1>ログイン</h1>
+    <p class="subtitle">Supabaseに登録したメールアドレスとパスワードを入力してください。</p>
+    @if (Model.SessionExpired)
+    {
+        <p class="alert info" role="status">セッションが終了しました。再度ログインしてください。</p>
+    }
+    <form method="post">
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="alert error" role="alert"></div>
+        <div class="field">
+            <label asp-for="Input.Email">メールアドレス</label>
+            <input asp-for="Input.Email" type="email" autocomplete="username" maxlength="254" required />
+            <span asp-validation-for="Input.Email" class="error"></span>
+        </div>
+        <div class="field">
+            <label asp-for="Input.Password">パスワード</label>
+            <input asp-for="Input.Password" type="password" autocomplete="current-password" maxlength="1024" required />
+            <span asp-validation-for="Input.Password" class="error"></span>
+        </div>
+        <button class="button primary" type="submit">ログインする</button>
+    </form>
+    <p class="login-note">再読込後も同じログインを使用します。8時間経過した場合やアプリが再起動した場合は、再度ログインしてください。</p>
+</section>

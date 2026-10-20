@@ -1,0 +1,152 @@
+@page "/"
+@attribute [Authorize]
+@inject TaskApiClient Tasks
+@inject NavigationManager Navigation
+
+<PageTitle>マイタスク | MiniTasks</PageTitle>
+
+<section class="page-heading">
+    <div><p class="eyebrow">A LITTLE PROGRESS, EVERY DAY</p><h1>マイタスク<span class="heading-dot">.</span></h1>
+        <p class="subtitle">やることを書き出して、ひとつずつ進めましょう。</p></div>
+    <span class="private-badge"><span aria-hidden="true">●</span> 自分だけのタスク</span>
+</section>
+<section class="stats" aria-label="タスクの集計">
+    <div><span class="stat-label">表示中のタスク</span><strong>@items.Length</strong></div>
+    <div><span class="stat-label">未完了</span><strong>@items.Count(t => !t.IsCompleted)</strong></div>
+    <div class="stat-done"><span class="stat-label">完了</span><strong>@items.Count(t => t.IsCompleted)</strong></div>
+</section>
+@if (error is not null)
+{
+    <div class="alert error" role="alert">@error</div>
+}
+<p class="sr-only" role="status" aria-live="polite">@announcement</p>
+<section class="card composer" aria-labelledby="new-task-heading">
+    <h2 id="new-task-heading">次にやることは？</h2>
+    <EditForm Model="input" OnValidSubmit="AddAsync" FormName="new-task">
+        <DataAnnotationsValidator />
+        <label for="task-title" class="sr-only">新しいタスクのタイトル</label>
+        <div class="compose-row">
+            <InputText id="task-title" @bind-Value="input.Title" maxlength="200" placeholder="例：記事のサンプルを動かしてみる" disabled="@busy" autocomplete="off" />
+            <button class="button primary" type="submit" disabled="@busy"><span aria-hidden="true">＋</span> タスクを追加</button>
+        </div>
+        <ValidationMessage For="() => input.Title" />
+    </EditForm>
+    <p class="field-hint">200文字以内で入力できます。</p>
+</section>
+<section class="card task-panel" aria-labelledby="task-list-heading" aria-busy="@(loading || busy)">
+    <div class="panel-heading">
+        <h2 id="task-list-heading">タスク一覧</h2>
+        <button class="button text" type="button" @onclick="ReloadAsync" disabled="@(loading || busy)">↻ 再読込</button>
+    </div>
+    <div class="filters" role="group" aria-label="表示するタスク">
+        @foreach (var option in filterOptions)
+        {
+            <button type="button" class="filter @(filter == option.Key ? "active" : "")"
+                    aria-pressed="@(filter == option.Key)" @onclick="() => filter = option.Key">@option.Label</button>
+        }
+    </div>
+    @if (items.Length >= TaskApiClient.ListLimit)
+    {
+        <p class="list-limit">一覧と集計は、新しい順に最大1,000件を対象にしています。</p>
+    }
+    @if (loading)
+    {
+        <div class="empty-state" role="status"><span class="empty-icon" aria-hidden="true">…</span><h3>タスクを読み込んでいます</h3></div>
+    }
+    else if (!VisibleItems.Any())
+    {
+        <div class="empty-state"><span class="empty-icon" aria-hidden="true">✓</span>
+            <h3>@(items.Length == 0 ? "最初のタスクを追加しましょう" : "この条件のタスクはありません")</h3>
+            <p>@(items.Length == 0 ? "小さなことからで大丈夫。上の欄に、やることをひとつ。" : "表示する条件を切り替えてみてください。")</p>
+        </div>
+    }
+    else
+    {
+        <ul class="task-list">
+            @foreach (var task in VisibleItems)
+            {
+                <li class="task-row @(task.IsCompleted ? "completed" : "")" @key="task.Id">
+                    <label class="task-check">
+                        <input type="checkbox" checked="@task.IsCompleted" disabled="@busy"
+                               @onchange="() => ToggleAsync(task)" />
+                        <span class="task-title">@task.Title</span>
+                    </label>
+                    <span class="task-state">@(task.IsCompleted ? "完了" : "未完了")</span>
+                    @if (deleteCandidate == task.Id)
+                    {
+                        <span class="delete-confirm"><span>削除しますか？</span>
+                            <button type="button" class="button danger" disabled="@busy" @onclick="() => DeleteAsync(task)">削除する</button>
+                            <button type="button" class="button text" disabled="@busy" @onclick="() => deleteCandidate = null">戻る</button>
+                        </span>
+                    }
+                    else
+                    {
+                        <button type="button" class="button delete-button" disabled="@busy"
+                                aria-label="@($"「{task.Title}」を削除")" @onclick="() => deleteCandidate = task.Id">削除</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    private readonly NewTaskInput input = new();
+    private readonly (string Key, string Label)[] filterOptions = [("all", "すべて"), ("open", "未完了"), ("done", "完了")];
+    private TaskItem[] items = [];
+    private string filter = "all";
+    private bool loading = true;
+    private bool busy;
+    private string? error;
+    private string announcement = "";
+    private long? deleteCandidate;
+    private IEnumerable<TaskItem> VisibleItems => items.Where(t => filter switch
+    {
+        "open" => !t.IsCompleted,
+        "done" => t.IsCompleted,
+        _ => true
+    });
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+    private async Task ReloadAsync()
+    {
+        loading = true;
+        try { await RunAsync(async () => items = await Tasks.ListAsync()); }
+        finally { loading = false; }
+    }
+    private Task AddAsync() => RunAsync(async () =>
+    {
+        var created = await Tasks.CreateAsync(input.Title);
+        items = [created, .. items];
+        input.Title = "";
+        filter = "all";
+        announcement = "タスクを追加しました。";
+    });
+    private Task ToggleAsync(TaskItem task) => RunAsync(async () =>
+    {
+        var updated = await Tasks.SetCompletedAsync(task.Id, !task.IsCompleted);
+        items = items.Select(t => t.Id == task.Id ? updated : t).ToArray();
+        announcement = updated.IsCompleted ? "タスクを完了にしました。" : "タスクを未完了に戻しました。";
+    });
+    private Task DeleteAsync(TaskItem task) => RunAsync(async () =>
+    {
+        await Tasks.DeleteAsync(task.Id);
+        items = items.Where(t => t.Id != task.Id).ToArray();
+        deleteCandidate = null;
+        announcement = "タスクを削除しました。";
+    });
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try { await action(); }
+        catch (SessionExpiredException) { Navigation.NavigateTo("/account/login?expired=true", forceLoad: true); }
+        catch (AuthenticationUnavailableException ex) { error = ex.Message; }
+        catch (ArgumentException ex) { error = ex.Message; }
+        catch (TaskOperationException ex) { error = ex.Message; }
+        catch (HttpRequestException) { error = "接続できませんでした。少し待ってから再試行してください。"; }
+        catch (OperationCanceledException) { error = "接続がタイムアウトしました。再試行してください。"; }
+        finally { busy = false; }
+    }
+}
